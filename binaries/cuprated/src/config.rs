@@ -227,6 +227,25 @@ impl Config {
         }
     }
 
+    /// The [`I2p`], [`cuprate_p2p::P2PConfig`].
+    pub fn i2p_p2p_config(&self) -> cuprate_p2p::P2PConfig<I2p> {
+        cuprate_p2p::P2PConfig {
+            network: self.network,
+            seeds: p2p::i2p_seed_nodes(self.network),
+            outbound_connections: self.p2p.i2p.outbound_connections,
+            extra_outbound_connections: 0, // I2P doesn't typically use extra connections
+            max_inbound_connections: self.p2p.i2p.max_inbound_connections,
+            gray_peers_percent: 0.7,
+            p2p_port: 0, // I2P doesn't use traditional ports
+            rpc_port: 0, // I2P doesn't expose RPC port
+            address_book_config: self.p2p.i2p.address_book_config.address_book_config(
+                &self.fs.cache_directory,
+                self.network,
+                Some("i2p"),
+            ),
+        }
+    }
+
     /// The [`ContextConfig`].
     pub const fn context_config(&self) -> ContextConfig {
         match self.network {

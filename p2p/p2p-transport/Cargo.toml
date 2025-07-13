@@ -6,6 +6,17 @@ license = "MIT"
 authors = ["SyntheticBird"]
 
 [dependencies]
+cuprate-p2p-core = { path = "../p2p-core" }
+cuprate-wire = { path = "../../net/wire" }
+i2p = { git = "https://github.com/i2p/i2p-rs", features = ["sam"] }
+rand = "0.8"
+
+async-trait = { workspace = true }
+futures = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+bytes = { workspace = true }
 
 [lints]
 workspace = true

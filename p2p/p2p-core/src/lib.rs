@@ -87,7 +87,7 @@ pub mod transports;
 pub mod types;
 
 pub use error::*;
-pub use network_zones::{ClearNet, Tor};
+pub use network_zones::{ClearNet, Tor, I2p};
 pub use protocol::*;
 use services::*;
 //re-export

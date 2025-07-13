@@ -29,6 +29,9 @@ use epee_builder::*;
 mod onion_addr;
 pub use onion_addr::*;
 
+mod garlic_addr;
+pub use garlic_addr::*;
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum NetZone {
     Public,
@@ -42,6 +45,7 @@ pub enum NetZone {
 pub enum NetworkAddress {
     Clear(SocketAddr),
     Tor(OnionAddr),
+    I2p(GarlicAddr),
 }
 
 impl EpeeObject for NetworkAddress {
@@ -61,6 +65,7 @@ impl NetworkAddress {
         match self {
             Self::Clear(_) => NetZone::Public,
             Self::Tor(_) => NetZone::Tor,
+            Self::I2p(_) => NetZone::I2p,
         }
     }
 
@@ -78,6 +83,7 @@ impl NetworkAddress {
         match self {
             Self::Clear(ip) => ip.port(),
             Self::Tor(addr) => addr.port(),
+            Self::I2p(addr) => addr.port(),
         }
     }
 }
@@ -103,6 +109,12 @@ impl From<SocketAddr> for NetworkAddress {
     }
 }
 
+impl From<GarlicAddr> for NetworkAddress {
+    fn from(value: GarlicAddr) -> Self {
+        Self::I2p(value)
+    }
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, thiserror::Error)]
 #[error("Network address is not in the correct zone")]
 pub struct NetworkAddressIncorrectZone;
@@ -112,7 +124,17 @@ impl TryFrom<NetworkAddress> for SocketAddr {
     fn try_from(value: NetworkAddress) -> Result<Self, Self::Error> {
         match value {
             NetworkAddress::Clear(addr) => Ok(addr),
-            NetworkAddress::Tor(_) => Err(NetworkAddressIncorrectZone),
+            NetworkAddress::Tor(_) | NetworkAddress::I2p(_) => Err(NetworkAddressIncorrectZone),
+        }
+    }
+}
+
+impl TryFrom<NetworkAddress> for GarlicAddr {
+    type Error = NetworkAddressIncorrectZone;
+    fn try_from(value: NetworkAddress) -> Result<Self, Self::Error> {
+        match value {
+            NetworkAddress::I2p(addr) => Ok(addr),
+            NetworkAddress::Clear(_) | NetworkAddress::Tor(_) => Err(NetworkAddressIncorrectZone),
         }
     }
 }

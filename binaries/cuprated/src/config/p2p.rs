@@ -11,9 +11,10 @@ use cuprate_helper::{fs::address_book_path, network::Network};
 use cuprate_p2p::config::TransportConfig;
 use cuprate_p2p_core::{
     transports::{Tcp, TcpServerConfig},
-    ClearNet, NetworkZone, Transport,
+    ClearNet, I2p, NetworkZone, Transport,
 };
-use cuprate_wire::OnionAddr;
+use cuprate_wire::{network_address::GarlicAddr, OnionAddr};
+use cuprate_p2p_transport;
 
 use super::macros::config_struct;
 
@@ -25,6 +26,10 @@ config_struct! {
         #[child = true]
         /// The clear-net P2P config.
         pub clear_net: ClearNetConfig,
+
+        #[child = true]
+        /// The I2P P2P config.
+        pub i2p: I2pConfig,
 
         #[child = true]
         /// Block downloader config.
@@ -159,6 +164,10 @@ config_struct! {
         #[child = true]
         /// The address book config.
         pub address_book_config: AddressBookConfig,
+
+        #[child = true]
+        /// The I2P config.
+        pub i2p: I2PConfig,
     }
 
     /// The config values for P2P clear-net.
@@ -342,4 +351,123 @@ pub fn tor_net_seed_nodes(network: Network) -> Vec<OnionAddr> {
         .map(|s| s.parse())
         .collect::<Result<_, _>>()
         .unwrap()
+}
+
+/// Seed nodes for I2P network.
+pub fn i2p_seed_nodes(network: Network) -> Vec<GarlicAddr> {
+    // For now, return empty - I2P seed nodes would need to be collected
+    // from known I2P Monero nodes
+    let seeds = match network {
+        Network::Mainnet => [
+            // TODO: Add actual I2P Monero seed node destinations
+            // "base64destination.b32.i2p:18080",
+        ]
+        .as_slice(),
+        Network::Stagenet | Network::Testnet => [].as_slice(),
+    };
+
+    seeds
+        .iter()
+        .map(|s| s.parse())
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap_or_default()
+}
+
+/// The config values for P2P I2P network.
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields, default)]
+pub struct I2PConfig {
+    /// Enable I2P network.
+    ///
+    /// Setting this to `false` will disable I2P P2P connections entirely.
+    ///
+    /// Type         | boolean
+    /// Valid values | false, true
+    /// Examples     | false, true
+    pub enable: bool,
+
+    /// I2P router address.
+    ///
+    /// The address of the I2P router (SAM bridge).
+    ///
+    /// Type     | String
+    /// Examples | "127.0.0.1:7656", "localhost:7656"
+    pub router_address: String,
+
+    /// Number of outbound I2P connections to maintain.
+    ///
+    /// Type         | Number
+    /// Valid values | >= 0
+    /// Examples     | 8, 16, 32
+    pub outbound_connections: usize,
+
+    /// Maximum number of inbound I2P connections.
+    ///
+    /// Type         | Number  
+    /// Valid values | >= 0
+    /// Examples     | 32, 64, 128
+    pub max_inbound_connections: usize,
+
+    /// Our I2P destination (base64).
+    ///
+    /// If not provided, a new destination will be generated.
+    ///
+    /// Type     | String (base64)
+    /// Examples | "base64-encoded-destination"
+    pub destination: Option<String>,
+
+    /// Private key for our I2P destination.
+    ///
+    /// If not provided with destination, a new key will be generated.
+    ///
+    /// Type     | String (base64)
+    /// Examples | "base64-encoded-private-key"
+    pub private_key: Option<String>,
+
+    #[child = true]
+    /// The address book config.
+    pub address_book_config: AddressBookConfig,
+}
+
+impl Default for I2PConfig {
+    fn default() -> Self {
+        Self {
+            enable: false, // Disabled by default
+            router_address: "127.0.0.1:7656".to_string(),
+            outbound_connections: 8,
+            max_inbound_connections: 32,
+            destination: None,
+            private_key: None,
+            address_book_config: AddressBookConfig::default(),
+        }
+    }
+}
+
+impl From<&I2pConfig> for TransportConfig<I2p, cuprate_p2p_transport::I2pTransport> {
+    fn from(config: &I2pConfig) -> Self {
+        use cuprate_p2p_transport::{I2pClientConfig, I2pServerConfig};
+        
+        let client_config = I2pClientConfig {
+            sam_address: config.router_address.clone(),
+            connect_timeout: Duration::from_secs(30),
+            session_timeout: Duration::from_secs(600),
+        };
+        
+        let server_config = if config.enable {
+            Some(I2pServerConfig {
+                sam_address: config.router_address.clone(),
+                session_name: "cuprate-server".to_string(),
+                destination: config.destination.clone(),
+                private_key: config.private_key.clone(),
+                signature_type: "EDDSA_SHA512_ED25519".to_string(),
+            })
+        } else {
+            None
+        };
+        
+        Self {
+            client_config,
+            server_config,
+        }
+    }
 }

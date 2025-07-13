@@ -11,7 +11,8 @@ use tower::{Service, ServiceExt};
 use cuprate_blockchain::service::{BlockchainReadHandle, BlockchainWriteHandle};
 use cuprate_consensus::BlockchainContextService;
 use cuprate_p2p::{config::TransportConfig, NetworkInterface, P2PConfig};
-use cuprate_p2p_core::{client::InternalPeerID, transports::Tcp, ClearNet, NetworkZone, Transport};
+use cuprate_p2p_core::{client::InternalPeerID, transports::Tcp, ClearNet, I2p, NetworkZone, Transport};
+use cuprate_p2p_transport::I2pTransport;
 use cuprate_txpool::service::{TxpoolReadHandle, TxpoolWriteHandle};
 use cuprate_types::blockchain::BlockchainWriteRequest;
 
@@ -32,13 +33,19 @@ pub use network_address::CrossNetworkInternalPeerId;
 pub struct NetworkInterfaces {
     /// Mandatory clearnet network interface
     pub clearnet_network_interface: NetworkInterface<ClearNet>,
+    /// Optional I2P network interface
+    pub i2p_network_interface: Option<NetworkInterface<I2p>>,
     // ...one can dream for more!
 }
 
 impl NetworkInterfaces {
-    pub const fn new(clearnet_network_interface: NetworkInterface<ClearNet>) -> Self {
+    pub const fn new(
+        clearnet_network_interface: NetworkInterface<ClearNet>,
+        i2p_network_interface: Option<NetworkInterface<I2p>>,
+    ) -> Self {
         Self {
             clearnet_network_interface,
+            i2p_network_interface,
         }
     }
 }
@@ -64,10 +71,38 @@ pub async fn initialize_zones_p2p(
     .await
     .unwrap();
 
-    // Create network interface collection
-    let network_interfaces = NetworkInterfaces::new(clearnet);
-    let tx_handler_subscribers = vec![incoming_tx_handler_tx];
+    // Start I2P P2P if enabled
+    let mut tx_handler_subscribers = vec![incoming_tx_handler_tx];
+    let i2p_interface = if config.p2p.i2p.enable {
+        info!("Starting I2P P2P network zone");
+        
+        match start_zone_p2p::<I2p, I2pTransport>(
+            blockchain_read_handle.clone(),
+            context_svc.clone(),
+            txpool_read_handle.clone(),
+            config.i2p_p2p_config(),
+            (&config.p2p.i2p).into(),
+        )
+        .await
+        {
+            Ok((i2p, i2p_tx_handler)) => {
+                info!("Successfully started I2P network zone");
+                tx_handler_subscribers.push(i2p_tx_handler);
+                Some(i2p)
+            }
+            Err(e) => {
+                warn!("Failed to start I2P network zone: {}", e);
+                info!("Continuing without I2P support");
+                None
+            }
+        }
+    } else {
+        debug!("I2P network zone disabled in configuration");
+        None
+    };
 
+    // Create network interface collection
+    let network_interfaces = NetworkInterfaces::new(clearnet, i2p_interface);
     (network_interfaces, tx_handler_subscribers)
 }
 
